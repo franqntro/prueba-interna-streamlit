@@ -1,0 +1,5 @@
+id,tipo,producer,buyer,parent_offer_id,toneladas,recoleccion,canastillas,precio,notas,status,created_at,updated_at
+46eb78f2,offer,producer1,buyer1,,1.0,1,1,1.0,1,closed,2026-01-19 23:32,2026-01-19 23:35
+d2e05802,counter,producer1,buyer1,46eb78f2,2.0,2,2,2.0,Contraoferta del comprador buyer1,accepted,2026-01-19 23:33,2026-01-19 23:35
+a0442a2e,offer,producer1,,,3.0,3,3,3.0,,open,2026-01-19 23:36,2026-01-19 23:36
+099170d5,counter,producer1,buyer2,a0442a2e,4.0,4,4,4.0,Contraoferta del comprador buyer2,deleted,2026-01-19 23:36,2026-01-19 23:37

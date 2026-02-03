@@ -1,0 +1,9 @@
+usuario_destino,mensaje,fecha
+buyer1,El productor producer1 publicó una nueva oferta #46eb78f2.,2026-01-19 23:32
+buyer2,El productor producer1 publicó una nueva oferta #46eb78f2.,2026-01-19 23:32
+producer1,El comprador buyer1 hizo una contraoferta a tu oferta #46eb78f2.,2026-01-19 23:33
+buyer1,El productor aceptó tu contraoferta #d2e05802.,2026-01-19 23:35
+buyer1,El productor producer1 publicó una nueva oferta #a0442a2e.,2026-01-19 23:36
+buyer2,El productor producer1 publicó una nueva oferta #a0442a2e.,2026-01-19 23:36
+producer1,El comprador buyer2 hizo una contraoferta a tu oferta #a0442a2e.,2026-01-19 23:36
+producer1,El comprador buyer2 eliminó su contraoferta #099170d5.,2026-01-19 23:37
