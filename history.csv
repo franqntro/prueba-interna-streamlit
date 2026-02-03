@@ -1,7 +1,1 @@
 offer_id,actor,accion,detalle,fecha
-46eb78f2,producer1,crear_oferta,El productor creó una oferta inicial.,2026-01-19 23:32
-46eb78f2,buyer1,contraoferta_comprador,El comprador buyer1 envió una contraoferta.,2026-01-19 23:33
-d2e05802,producer1,aceptar_contraoferta,El productor aceptó la contraoferta de buyer1.,2026-01-19 23:35
-a0442a2e,producer1,crear_oferta,El productor creó una oferta inicial.,2026-01-19 23:36
-a0442a2e,buyer2,contraoferta_comprador,El comprador buyer2 envió una contraoferta.,2026-01-19 23:36
-a0442a2e,buyer2,eliminar_contraoferta,El comprador buyer2 eliminó su contraoferta.,2026-01-19 23:37
