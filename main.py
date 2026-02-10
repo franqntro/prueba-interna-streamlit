@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import os
 import math
@@ -114,7 +114,7 @@ def init_state():
 
 def ahora():
     """Devuelve fecha y hora en texto simple."""
-    return datetime.now().strftime("%Y-%m-%d %H:%M")
+return (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M")
 
 
 def generar_id():
@@ -814,4 +814,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
