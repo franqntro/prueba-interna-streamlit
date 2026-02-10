@@ -113,8 +113,8 @@ def init_state():
 # ============================================================
 
 def ahora():
-    """Devuelve fecha y hora (Colombia, UTC-5) en texto simple."""
-    return (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M")
+    """Devuelve fecha y hora"""
+    return (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %I:%M %p")
   
 def generar_id():
     """Genera un id corto para ofertas y contraofertas."""
@@ -813,6 +813,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
