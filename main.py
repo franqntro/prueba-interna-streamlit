@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import uuid
 import os
 import math
@@ -60,7 +60,6 @@ def load_csv_list(filename):
 def save_csv_list(filename, records):
     """Guarda una lista de diccionarios en un CSV."""
     if not records:
-        # Si está vacío, guardamos un CSV vacío con columnas mínimas
         pd.DataFrame([]).to_csv(filename, index=False)
     else:
         df = pd.DataFrame(records)
@@ -86,9 +85,9 @@ def init_state():
     # Usuarios de prueba (no se guardan en CSV, son fijos)
     if "users" not in st.session_state:
         st.session_state.users = {
-            "producer1": {"password": "producer123", "role": "producer"},
-            "buyer1": {"password": "buyer123", "role": "buyer"},
-            "buyer2": {"password": "buyer234", "role": "buyer"},
+            "vendedor1": {"password": "vendedor123", "role": "producer"},
+            "comprador1": {"password": "comprador123", "role": "buyer"},
+            "comprador2": {"password": "comprador234", "role": "buyer"},
         }
 
     # Ofertas y contraofertas
@@ -113,9 +112,10 @@ def init_state():
 # ============================================================
 
 def ahora():
-    """Devuelve fecha y hora"""
-    return (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %I:%M %p")
-  
+    """Devuelve fecha y hora en texto simple."""
+    return datetime.now().strftime("%Y-%m-%d %I:%M %p")
+
+
 def generar_id():
     """Genera un id corto para ofertas y contraofertas."""
     return uuid.uuid4().hex[:8]
@@ -145,7 +145,7 @@ def enviar_notificacion(usuario, mensaje):
 
 def get_oferta_por_id(offer_id):
     for o in st.session_state.offers:
-        if o["id"] == offer_id:
+        if o.get("id") == offer_id:
             return o
     return None
 
@@ -169,7 +169,7 @@ def comprador_ya_proceso_oferta(buyer, offer_id):
 
 def limpiar_accion_comprador(buyer, offer_id):
     """Permite que el comprador vuelva a ver una oferta en su Inicio
-    cuando el productor envía una nueva contraoferta."""
+    cuando el productor envía una nueva contraoferta o cuando el comprador elimina su contraoferta."""
     nueva_lista = []
     for a in st.session_state.buyer_actions:
         if not (a["buyer"] == buyer and a["offer_id"] == offer_id):
@@ -181,19 +181,27 @@ def limpiar_accion_comprador(buyer, offer_id):
 #  CREACIÓN DE OFERTAS Y CONTRAOFERTAS
 # ============================================================
 
-def crear_oferta(productor, toneladas, recoleccion, canastillas, precio, notas):
+def crear_oferta(productor, toneladas, recoleccion, canastillas, precio,
+                calibre, madurez, origen, notas):
     nueva_oferta = {
         "id": generar_id(),
-        "tipo": "offer",          # oferta normal del productor
+        "tipo": "offer",
         "producer": productor,
-        "buyer": None,            # se completa cuando alguien acepta
-        "parent_offer_id": None,  # no viene de otra oferta
+        "buyer": None,
+        "parent_offer_id": None,
         "toneladas": toneladas,
         "recoleccion": recoleccion,
         "canastillas": canastillas,
         "precio": precio,
+
+        # NUEVOS CAMPOS DE NEGOCIACIÓN
+        "calibre": calibre,
+        "madurez": madurez,
+        "origen": origen,
+
         "notas": notas,
-        "status": "open",         # open, accepted, closed, deleted
+        "status": "open",         # open, accepted, closed
+        "producer_hidden": False, # ocultar SOLO en "Mis ofertas" del productor
         "created_at": ahora(),
         "updated_at": ahora(),
     }
@@ -219,14 +227,14 @@ def crear_oferta(productor, toneladas, recoleccion, canastillas, precio, notas):
 
 def crear_contraoferta_comprador(oferta_original, comprador,
                                  toneladas, recoleccion, canastillas,
-                                 precio, notas):
+                                 precio, calibre, madurez, origen, notas):
     """
     Crea un registro de contraoferta del comprador.
     No cierra la oferta original, solo añade una propuesta.
     """
     contra = {
         "id": generar_id(),
-        "tipo": "counter",           # contraoferta del comprador
+        "tipo": "counter",
         "producer": oferta_original["producer"],
         "buyer": comprador,
         "parent_offer_id": oferta_original["id"],
@@ -234,6 +242,12 @@ def crear_contraoferta_comprador(oferta_original, comprador,
         "recoleccion": recoleccion,
         "canastillas": canastillas,
         "precio": precio,
+
+        # NUEVOS CAMPOS DE NEGOCIACIÓN
+        "calibre": calibre,
+        "madurez": madurez,
+        "origen": origen,
+
         "notas": notas,
         "status": "open",           # open, accepted, rejected, answered, deleted
         "created_at": ahora(),
@@ -264,7 +278,7 @@ def crear_contraoferta_comprador(oferta_original, comprador,
 
 def contraoferta_vendedor_actualizar(oferta_original, contraoferta,
                                      toneladas, recoleccion, canastillas,
-                                     precio, notas):
+                                     precio, calibre, madurez, origen, notas):
     """
     El productor responde a la contraoferta del comprador.
     En lugar de crear una oferta nueva, actualiza los datos de la oferta original
@@ -275,9 +289,16 @@ def contraoferta_vendedor_actualizar(oferta_original, contraoferta,
     oferta_original["recoleccion"] = recoleccion
     oferta_original["canastillas"] = canastillas
     oferta_original["precio"] = precio
-    if notas:
+
+    # NUEVOS CAMPOS DE NEGOCIACIÓN (se actualizan también)
+    oferta_original["calibre"] = calibre
+    oferta_original["madurez"] = madurez
+    oferta_original["origen"] = origen
+
+    if notas is not None:
         oferta_original["notas"] = notas
-    oferta_original["status"] = "open"  # sigue abierta hasta que alguien acepte
+
+    oferta_original["status"] = "open"
     oferta_original["updated_at"] = ahora()
 
     # Marcar la contraoferta como respondida
@@ -333,12 +354,12 @@ def login_box():
 def vista_inicio_comprador(user):
     st.subheader("Ofertas disponibles")
 
-    # Ocultar ofertas cerradas/eliminadas o ya procesadas por este comprador
+    # Ocultar ofertas cerradas/aceptadas o ya procesadas por este comprador
     ofertas_disponibles = []
     for o in st.session_state.offers:
         if (
             o.get("tipo") == "offer"
-            and o.get("status") not in ["closed", "accepted", "deleted"]
+            and o.get("status") not in ["closed", "accepted"]
             and not comprador_ya_proceso_oferta(user, o.get("id"))
         ):
             ofertas_disponibles.append(o)
@@ -349,18 +370,21 @@ def vista_inicio_comprador(user):
 
     for o in ofertas_disponibles:
         with st.container(border=True):
-            st.markdown(f"**Oferta #{o['id']} — {o['status']}**")
-            st.write(f"Productor: **{o['producer']}**")
-            st.write(f"Toneladas: {o['toneladas']}")
-            st.write(f"Días de recolección: {o['recoleccion']}")
-            st.write(f"Canastillas: {o['canastillas']}")
-            st.write(f"Precio: {o['precio']}")
+            st.markdown(f"**Oferta #{o['id']} — {o.get('status','open')}**")
+            st.write(f"Productor: **{o.get('producer','—')}**")
+            st.write(f"Toneladas: {o.get('toneladas','—')}")
+            st.write(f"Días de recolección: {o.get('recoleccion','—')}")
+            st.write(f"Canastillas: {o.get('canastillas','—')}")
+            st.write(f"Precio: {o.get('precio','—')}")
+            st.write(f"Calibre: {o.get('calibre','—')}")
+            st.write(f"Grado de madurez: {o.get('madurez','—')}")
+            st.write(f"Origen: {o.get('origen','—')}")
             if o.get("notas"):
                 st.write(f"Notas: {o['notas']}")
 
             c1, c2, c3, c4 = st.columns(4)
 
-            # Me interesa
+            # Me interesa (YA NO OCULTA LA OFERTA)
             if c1.button("Me interesa", key=f"int_{o['id']}_{user}"):
                 registrar_historial(
                     o["id"],
@@ -372,9 +396,8 @@ def vista_inicio_comprador(user):
                     o["producer"],
                     f"El comprador {user} marcó interés en tu oferta #{o['id']}.",
                 )
-                marcar_oferta_procesada_por_comprador(user, o["id"])
                 save_all()
-                st.success("Interés registrado.")
+                st.success("Interés registrado. (La oferta sigue visible en Inicio).")
                 st.rerun()
 
             # Aceptar oferta directa
@@ -422,27 +445,45 @@ def vista_inicio_comprador(user):
                     toneladas = st.number_input(
                         "Toneladas",
                         min_value=0.0,
-                        value=float(o["toneladas"]),
+                        value=float(o.get("toneladas", 0.0)),
                         step=1.0,
                         key=f"ton_c_{o['id']}_{user}",
                     )
                     reco = st.text_input(
                         "Días de recolección",
-                        value=o["recoleccion"],
+                        value=o.get("recoleccion", ""),
                         key=f"reco_c_{o['id']}_{user}",
                     )
                     can = st.text_input(
                         "Canastillas",
-                        value=o["canastillas"],
+                        value=o.get("canastillas", ""),
                         key=f"can_c_{o['id']}_{user}",
                     )
                     precio = st.number_input(
                         "Precio",
                         min_value=0.0,
-                        value=float(o["precio"]),
+                        value=float(o.get("precio", 0.0)),
                         step=1.0,
                         key=f"pre_c_{o['id']}_{user}",
                     )
+
+                    # NUEVOS CAMPOS
+                    calibre = st.text_input(
+                        "Calibre",
+                        value=o.get("calibre", "") or "",
+                        key=f"cal_c_{o['id']}_{user}",
+                    )
+                    madurez = st.text_input(
+                        "Grado de madurez",
+                        value=o.get("madurez", "") or "",
+                        key=f"mad_c_{o['id']}_{user}",
+                    )
+                    origen = st.text_input(
+                        "Origen",
+                        value=o.get("origen", "") or "",
+                        key=f"ori_c_{o['id']}_{user}",
+                    )
+
                     notas = st.text_area(
                         "Notas para el productor",
                         value=f"Contraoferta del comprador {user}",
@@ -452,7 +493,8 @@ def vista_inicio_comprador(user):
 
                     if enviar:
                         crear_contraoferta_comprador(
-                            o, user, toneladas, reco, can, precio, notas
+                            o, user, toneladas, reco, can, precio,
+                            calibre, madurez, origen, notas
                         )
                         st.success("Contraoferta enviada al productor.")
                         st.rerun()
@@ -476,11 +518,14 @@ def vista_inicio_productor(user):
 
         with st.container(border=True):
             st.markdown(f"**Contraoferta #{c['id']}** sobre oferta #{c['parent_offer_id']}")
-            st.write(f"Comprador: **{c['buyer']}**")
-            st.write(f"Toneladas: {c['toneladas']}")
-            st.write(f"Días de recolección: {c['recoleccion']}")
-            st.write(f"Canastillas: {c['canastillas']}")
-            st.write(f"Precio: {c['precio']}")
+            st.write(f"Comprador: **{c.get('buyer','—')}**")
+            st.write(f"Toneladas: {c.get('toneladas','—')}")
+            st.write(f"Días de recolección: {c.get('recoleccion','—')}")
+            st.write(f"Canastillas: {c.get('canastillas','—')}")
+            st.write(f"Precio: {c.get('precio','—')}")
+            st.write(f"Calibre: {c.get('calibre','—')}")
+            st.write(f"Grado de madurez: {c.get('madurez','—')}")
+            st.write(f"Origen: {c.get('origen','—')}")
             if c.get("notas"):
                 st.write(f"Notas: {c['notas']}")
 
@@ -540,27 +585,45 @@ def vista_inicio_productor(user):
                         toneladas = st.number_input(
                             "Toneladas",
                             min_value=0.0,
-                            value=float(oferta_original["toneladas"]),
+                            value=float(oferta_original.get("toneladas", 0.0)),
                             step=1.0,
                             key=f"ton_p_{c['id']}",
                         )
                         reco = st.text_input(
                             "Días de recolección",
-                            value=oferta_original["recoleccion"],
+                            value=oferta_original.get("recoleccion", ""),
                             key=f"reco_p_{c['id']}",
                         )
                         can = st.text_input(
                             "Canastillas",
-                            value=oferta_original["canastillas"],
+                            value=oferta_original.get("canastillas", ""),
                             key=f"can_p_{c['id']}",
                         )
                         precio = st.number_input(
                             "Precio",
                             min_value=0.0,
-                            value=float(oferta_original["precio"]),
+                            value=float(oferta_original.get("precio", 0.0)),
                             step=1.0,
                             key=f"pre_p_{c['id']}",
                         )
+
+                        # NUEVOS CAMPOS
+                        calibre = st.text_input(
+                            "Calibre",
+                            value=oferta_original.get("calibre", "") or "",
+                            key=f"cal_p_{c['id']}",
+                        )
+                        madurez = st.text_input(
+                            "Grado de madurez",
+                            value=oferta_original.get("madurez", "") or "",
+                            key=f"mad_p_{c['id']}",
+                        )
+                        origen = st.text_input(
+                            "Origen",
+                            value=oferta_original.get("origen", "") or "",
+                            key=f"ori_p_{c['id']}",
+                        )
+
                         notas = st.text_area(
                             "Notas (opcional)",
                             value=oferta_original.get("notas", ""),
@@ -576,6 +639,9 @@ def vista_inicio_productor(user):
                                 reco,
                                 can,
                                 precio,
+                                calibre,
+                                madurez,
+                                origen,
                                 notas,
                             )
                             st.success("Se envió una nueva propuesta al comprador.")
@@ -587,44 +653,38 @@ def vista_mis_ofertas_productor(user):
 
     mis_ofertas = []
     for o in st.session_state.offers:
-        if o.get("producer") == user and o.get("tipo") == "offer":
+        if o.get("producer") == user and o.get("tipo") == "offer" and not o.get("producer_hidden", False):
             mis_ofertas.append(o)
 
     if not mis_ofertas:
-        st.info("Aún no has creado ofertas.")
+        st.info("Aún no has creado ofertas (o las ocultaste).")
     else:
         for o in mis_ofertas:
             with st.container(border=True):
-                st.markdown(f"**Oferta #{o['id']} — {o['status']}**")
-                st.write(f"Comprador final: {o['buyer'] if o['buyer'] else '—'}")
-                st.write(f"Toneladas: {o['toneladas']}")
-                st.write(f"Días de recolección: {o['recoleccion']}")
-                st.write(f"Canastillas: {o['canastillas']}")
-                st.write(f"Precio: {o['precio']}")
-                st.write(f"Creada: {o['created_at']} · Actualizada: {o['updated_at']}")
+                st.markdown(f"**Oferta #{o['id']} — {o.get('status','open')}**")
+                st.write(f"Comprador final: {o['buyer'] if o.get('buyer') else '—'}")
+                st.write(f"Toneladas: {o.get('toneladas','—')}")
+                st.write(f"Días de recolección: {o.get('recoleccion','—')}")
+                st.write(f"Canastillas: {o.get('canastillas','—')}")
+                st.write(f"Precio: {o.get('precio','—')}")
+                st.write(f"Calibre: {o.get('calibre','—')}")
+                st.write(f"Grado de madurez: {o.get('madurez','—')}")
+                st.write(f"Origen: {o.get('origen','—')}")
+                st.write(f"Creada: {o.get('created_at','—')} · Actualizada: {o.get('updated_at','—')}")
 
-                # Eliminar solo si no está cerrada ni aceptada
-                if o["status"] not in ["closed", "accepted"]:
+                # OCULTAR (en vez de eliminar definitivamente)
+                if o.get("status") not in ["closed", "accepted"]:
                     if st.button("Eliminar oferta", key=f"del_{o['id']}"):
-                        o["status"] = "deleted"
+                        o["producer_hidden"] = True
                         o["updated_at"] = ahora()
                         registrar_historial(
                             o["id"],
                             user,
-                            "eliminar_oferta",
-                            "El productor marcó la oferta como eliminada.",
+                            "ocultar_oferta",
+                            "El productor ocultó la oferta (sigue visible en Inicio para compradores).",
                         )
-                        # Notificar a compradores
-                        for username, data in st.session_state.users.items():
-                            if data["role"] == "buyer":
-                                enviar_notificacion(
-                                    username,
-                                    f"La oferta #{o['id']} fue eliminada por el productor.",
-                                )
                         save_all()
-                        st.warning(
-                            "Oferta eliminada (no visible para compradores)."
-                        )
+                        st.warning("Oferta ocultada (sigue disponible en Inicio para compradores).")
                         st.rerun()
 
                 # Historial + CSV
@@ -654,11 +714,17 @@ def vista_mis_ofertas_productor(user):
         reco = st.text_input("Días de recolección")
         can = st.text_input("Canastillas")
         precio = st.number_input("Precio", min_value=0.0, step=1.0)
+
+        # NUEVOS CAMPOS
+        calibre = st.text_input("Calibre")
+        madurez = st.text_input("Grado de madurez")
+        origen = st.text_input("Origen")
+
         notas = st.text_area("Notas (opcional)")
         enviar = st.form_submit_button("Publicar oferta")
 
         if enviar:
-            crear_oferta(user, toneladas, reco, can, precio, notas)
+            crear_oferta(user, toneladas, reco, can, precio, calibre, madurez, origen, notas)
             st.success("Oferta creada correctamente.")
             st.rerun()
 
@@ -676,17 +742,20 @@ def vista_mis_ofertas_comprador(user):
     else:
         for c in mis_contras:
             with st.container(border=True):
-                st.markdown(f"**Contraoferta #{c['id']} — {c['status']}**")
-                st.write(f"Oferta original: #{c['parent_offer_id']}")
-                st.write(f"Productor: {c['producer']}")
-                st.write(f"Toneladas: {c['toneladas']}")
-                st.write(f"Días de recolección: {c['recoleccion']}")
-                st.write(f"Canastillas: {c['canastillas']}")
-                st.write(f"Precio: {c['precio']}")
-                st.write(f"Creada: {c['created_at']}")
+                st.markdown(f"**Contraoferta #{c['id']} — {c.get('status','—')}**")
+                st.write(f"Oferta original: #{c.get('parent_offer_id','—')}")
+                st.write(f"Productor: {c.get('producer','—')}")
+                st.write(f"Toneladas: {c.get('toneladas','—')}")
+                st.write(f"Días de recolección: {c.get('recoleccion','—')}")
+                st.write(f"Canastillas: {c.get('canastillas','—')}")
+                st.write(f"Precio: {c.get('precio','—')}")
+                st.write(f"Calibre: {c.get('calibre','—')}")
+                st.write(f"Grado de madurez: {c.get('madurez','—')}")
+                st.write(f"Origen: {c.get('origen','—')}")
+                st.write(f"Creada: {c.get('created_at','—')}")
 
-                # Eliminar contraoferta (solo si está abierta)
-                if c["status"] == "open":
+                # Eliminar contraoferta (solo si está abierta) -> la oferta vuelve a aparecer en Inicio
+                if c.get("status") == "open":
                     if st.button("Eliminar contraoferta", key=f"del_c_{c['id']}"):
                         c["status"] = "deleted"
                         c["updated_at"] = ahora()
@@ -700,8 +769,12 @@ def vista_mis_ofertas_comprador(user):
                             c["producer"],
                             f"El comprador {user} eliminó su contraoferta #{c['id']}.",
                         )
+
+                        # CLAVE: permitir que vuelva a aparecer en Inicio
+                        limpiar_accion_comprador(user, c["parent_offer_id"])
+
                         save_all()
-                        st.warning("Contraoferta eliminada.")
+                        st.warning("Contraoferta eliminada. La oferta volvió a tu Inicio.")
                         st.rerun()
 
                 # Historial
@@ -742,14 +815,17 @@ def vista_mis_ofertas_comprador(user):
     else:
         for o in aceptadas:
             with st.container(border=True):
-                st.markdown(f"**Oferta #{o['id']} — {o['status']}**")
-                st.write(f"Productor: {o['producer']}")
-                st.write(f"Toneladas: {o['toneladas']}")
-                st.write(f"Días de recolección: {o['recoleccion']}")
-                st.write(f"Canastillas: {o['canastillas']}")
-                st.write(f"Precio: {o['precio']}")
+                st.markdown(f"**Oferta #{o['id']} — {o.get('status','—')}**")
+                st.write(f"Productor: {o.get('producer','—')}")
+                st.write(f"Toneladas: {o.get('toneladas','—')}")
+                st.write(f"Días de recolección: {o.get('recoleccion','—')}")
+                st.write(f"Canastillas: {o.get('canastillas','—')}")
+                st.write(f"Precio: {o.get('precio','—')}")
+                st.write(f"Calibre: {o.get('calibre','—')}")
+                st.write(f"Grado de madurez: {o.get('madurez','—')}")
+                st.write(f"Origen: {o.get('origen','—')}")
                 st.write(
-                    f"Creada: {o['created_at']} · Actualizada: {o['updated_at']}"
+                    f"Creada: {o.get('created_at','—')} · Actualizada: {o.get('updated_at','—')}"
                 )
 
 
@@ -813,8 +889,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
 
 
